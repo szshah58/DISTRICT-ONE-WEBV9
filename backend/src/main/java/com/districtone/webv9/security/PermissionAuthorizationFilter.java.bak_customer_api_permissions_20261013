@@ -1,0 +1,80 @@
+package com.districtone.webv9.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Map;
+
+/** Adds database-backed permission checks to the existing role authorization rules. */
+public class PermissionAuthorizationFilter extends OncePerRequestFilter {
+  private static final Map<String, String> MODULES = Map.ofEntries(
+      Map.entry("/api/v1/admin/users", "Users & Roles"),
+      Map.entry("/api/v1/admin/customer-import", "Admin & Settings"),
+      Map.entry("/api/v1/admin/config/audit/log", "System Logs"),
+      Map.entry("/api/v1/admin/config", "Admin & Settings"),
+      Map.entry("/api/v1/dashboard", "Dashboard"),
+      Map.entry("/api/v1/sales", "Plots & Sales"),
+      Map.entry("/api/v1/plots", "Plots & Sales"),
+      Map.entry("/api/v1/projects", "Plots & Sales"),
+      Map.entry("/api/v1/customers", "Members"),
+      Map.entry("/api/v1/members", "Members"),
+      Map.entry("/api/v1/finance", "Finance"),
+      Map.entry("/api/v1/payments", "Finance"),
+      Map.entry("/api/v1/customer-care", "Customer Care"),
+      Map.entry("/api/v1/documents", "Documents"),
+      Map.entry("/api/v1/reports", "Reports"),
+      Map.entry("/api/v1/audit", "System Logs"));
+
+  private final UserPermissionService permissions;
+
+  public PermissionAuthorizationFilter(UserPermissionService permissions) {
+    this.permissions = permissions;
+  }
+
+  @Override
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                  FilterChain chain) throws ServletException, IOException {
+    String path = request.getRequestURI().substring(request.getContextPath().length());
+    String module = moduleFor(path);
+    if (module == null || "OPTIONS".equalsIgnoreCase(request.getMethod())) {
+      chain.doFilter(request, response);
+      return;
+    }
+
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated()
+        || "anonymousUser".equals(authentication.getPrincipal())) {
+      chain.doFilter(request, response);
+      return;
+    }
+
+    String action = actionFor(request.getMethod(), path);
+    if (!permissions.isGranted(authentication.getName(), module, action)) {
+      response.sendError(HttpServletResponse.SC_FORBIDDEN, "Required permission is not assigned");
+      return;
+    }
+    chain.doFilter(request, response);
+  }
+
+  private String moduleFor(String path) {
+    return MODULES.entrySet().stream()
+        .filter(entry -> path.equals(entry.getKey()) || path.startsWith(entry.getKey() + "/"))
+        .max(java.util.Comparator.comparingInt(entry -> entry.getKey().length()))
+        .map(Map.Entry::getValue)
+        .orElse(null);
+  }
+
+  private String actionFor(String method, String path) {
+    if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) return "VIEW";
+    if (path.matches(".*/(verify|approve|post|reject|disburse)(/.*)?$")) return "APPROVE";
+    if ("DELETE".equalsIgnoreCase(method)) return "DELETE";
+    if ("PUT".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method)) return "EDIT";
+    return "ADD";
+  }
+}

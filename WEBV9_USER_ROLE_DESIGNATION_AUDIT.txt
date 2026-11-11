@@ -1,0 +1,358 @@
+DISTRICT ONE WEBV9 - USER ROLE / DESIGNATION AUDIT
+Audit date: 2026-11-02
+Project: D:\WEB_V9
+Scope: Read-only source review. No files other than this requested report were changed.
+       No database writes, migrations, service restarts, or security changes were made.
+
+EXECUTIVE SUMMARY
+
+The application has separate concepts for role, job designation, explicit permissions,
+project/location assignments, and user active/access dates. The code does not consistently
+combine these concepts when making authorization decisions. In particular:
+
+1. The admin detail response calculates designation-derived rights, but the live API
+   permission resolver does not read designation permissions.
+2. Project/location assignments are stored and returned, but ProjectAccessService grants
+   project access only to Super Admin accounts; non-Super-Admin scope rows are not consulted.
+3. Access start/end dates are stored and validated for ordering, but authentication does not
+   enforce either date. Position activity is checked when assigning a position, not when
+   authorizing the user's later requests.
+4. The frontend account form exposes roles and permission checkboxes but not job title,
+   access dates, or project scopes; it does not call the separate access-assignment API.
+5. The frontend defaults new users to DATA_ENTRY when that role exists, while the receipt
+   entry API's class-level role check does not include DATA_ENTRY.
+
+The actual populated user, position, role, permission, and scope records were not queried.
+No authorized read-only database query interface or record export was available in the
+task context. Source code and existing local files do not provide actual populated account
+mappings. Therefore no username, title, department assignment, permission grant, scope,
+or account status is inferred or fabricated below.
+
+1. ROLE AND DESIGNATION ARCHITECTURE
+
+1.1 User and role records
+
+- The User JPA entity maps users.username, password_hash, display_name, email, mobile,
+  is_active, and role. It does not map department, position_id, access_starts_at, or
+  access_ends_at. Source: backend\src\main\java\com\districtone\webv9\model\User.java:3-12.
+- The Role JPA entity maps roles.id and roles.role_name. Authorization/admin SQL also expects
+  roles.role_code, roles.role_permissions, permissions, and user_roles. Source:
+  backend\src\main\java\com\districtone\webv9\model\Role.java:4-8;
+  backend\src\main\java\com\districtone\webv9\security\UserPermissionService.java:27-35;
+  backend\src\main\java\com\districtone\webv9\controller\OperationsController.java:234-243,
+  398-400, 455.
+- Admin user creation/update writes one users.role and one user_roles row; update replaces
+  the role row for that user. The permission resolver joins roles through users.role, not
+  user_roles. Thus multiple effective roles are not established by the authorization code.
+  Source: OperationsController.java:450-470, 561-582;
+  UserPermissionService.java:27-35.
+- SeedConfig creates a "superadmin" user only if the users table is empty and a seed password
+  is present. This is a conditional bootstrap, not evidence that the account currently exists.
+  Source: backend\src\main\java\com\districtone\webv9\config\SeedConfig.java:15-26.
+
+1.2 Designations, departments, permissions, scope and dates
+
+- Designations are represented in SQL by webv9_positions (position_code, position_name,
+  department, is_active), and webv9_position_permissions links positions to permissions.
+  Source: OperationsController.java:200-205, 209-224.
+- A user's selected designation is stored in users.position_id. Department is stored on the
+  user separately and must match the designation department when assignment/create validation
+  is used. Source: OperationsController.java:316-326, 412-420.
+- Designation rights are configured via a Super-Admin-only endpoint that replaces rows in
+  webv9_position_permissions. Source: OperationsController.java:209-224.
+- Per-user overrides are represented by user_permission_overrides.is_granted. A specific
+  user access assignment stores selected grants and deletes prior overrides. Source:
+  OperationsController.java:367-372.
+- Project/location/city assignment rows are stored in webv9_user_project_scopes and exposed
+  by the user-detail endpoint. Source: OperationsController.java:190-193, 358-365.
+- User access dates are represented as users.access_starts_at/access_ends_at and are exposed
+  by user detail and assignment/create DTOs. Source: OperationsController.java:169-170,
+  254-268, 285-286, 356.
+- In the repository, database/migrations contains payment/receipt migrations but no RBAC or
+  designation schema DDL. The code's SQL documents the expected tables/columns, but the live
+  schema and contents have not been independently verified in this audit.
+
+2. USER-TO-DESIGNATION-TO-ROLE MATRIX
+
+The required matrix is shown below. "Not queried" means the actual database record was not
+available to this read-only source audit; it does not mean that no users or assignments exist.
+
+Username | Department | Job designation | Assigned roles | Designation-based permissions |
+Project/location scope | Status
+NOT QUERIED | NOT QUERIED | NOT QUERIED | NOT QUERIED | NOT QUERIED |
+NOT QUERIED | NOT QUERIED
+
+The source supports obtaining these values from OperationsController user detail:
+users.department, users.role, users.is_active, users.access_starts_at, users.access_ends_at,
+webv9_positions.position_code/position_name, permissions and permission link tables, and
+webv9_user_project_scopes. Those source queries are not a substitute for reading the live
+records. A database export or approved read-only query is required to populate actual rows.
+
+3. EFFECTIVE PERMISSION RESOLUTION
+
+3.1 Login and request-time identity
+
+- Login rejects missing/inactive users and authenticates the password. It creates a JWT with
+  the value of users.role, but no designation, permission list, project scope, or access dates.
+  Source: backend\src\main\java\com\districtone\webv9\controller\AuthController.java:46-66.
+- For staff requests, JwtAuthenticationFilter reloads users.role, department, and active
+  status from the database, but selects `NULL AS position_code`. The subsequent code that
+  would add a position-derived ROLE_* and department-derived ROLE_FINANCE/RECOVERY/STAFF/
+  CUSTOMER_CARE therefore cannot run for staff requests. Source:
+  backend\src\main\java\com\districtone\webv9\security\JwtAuthenticationFilter.java:55-78.
+- The request-time lookup checks is_active=1 only; it does not check access_starts_at,
+  access_ends_at, or whether the assigned position is still active. Source:
+  JwtAuthenticationFilter.java:55-58.
+- The database role is reloaded for staff requests, so changing users.role can change the
+  authority set on the next authenticated request. Designation changes are not loaded by
+  this filter and do not directly update the request authority set.
+
+3.2 Permission calculation and displayed permissions
+
+- SecurityConfig requires authentication for unmatched routes and installs the JWT and
+  PermissionAuthorizationFilter. It permits selected public routes and OPTIONS. Source:
+  backend\src\main\java\com\districtone\webv9\security\SecurityConfig.java:66-72.
+- PermissionAuthorizationFilter maps protected API paths to modules/actions and calls
+  UserPermissionService.isGranted. It skips OPTIONS, unmapped paths and customer APIs.
+  Source: backend\src\main\java\com\districtone\webv9\security\PermissionAuthorizationFilter.java:45-70,
+  75-98.
+- UserPermissionService grants if the user is super-admin, otherwise gives precedence to a
+  per-user override and then role_permissions. It does not join
+  webv9_position_permissions. Source:
+  backend\src\main\java\com\districtone\webv9\security\UserPermissionService.java:16-38.
+- In contrast, the admin user-detail response calculates displayed permissions from the
+  position when position_id is populated, falling back to role grants only when no position
+  exists, plus explicit positive overrides. Source:
+  backend\src\main\java\com\districtone\webv9\controller\OperationsController.java:179-188.
+- Therefore, displayed designation permissions can differ from API-effective permissions.
+  A position-only grant with no explicit user override is not granted by
+  UserPermissionService. A position-rights change can also leave previously stored user
+  overrides intact. In the opposite direction, a role_permissions grant can be effective
+  through UserPermissionService when there is no user override, while the detail response
+  omits that role grant whenever position_id is populated. This can hide an effective grant
+  from the permission editor.
+- The dedicated access-assignment endpoint deletes overrides and inserts only selected
+  grants (is_granted=1). It does not create explicit denials for omitted permissions. Since
+  UserPermissionService falls back to role_permissions when there is no override, a grant
+  supplied by the user's role can remain effective even when omitted from that assignment.
+  Source: OperationsController.java:367-372; UserPermissionService.java:21-24, 33-36.
+- `is_super_admin=1` or users.role=SUPER_ADMIN bypasses this permission table and grants every
+  checked module/action. This is an explicit broad-access path; whether any account has the
+  flag inconsistently set is unverified. Source: UserPermissionService.java:21.
+
+3.3 Expected versus effective permissions (implementation comparison)
+
+The application does not provide an approved business permission matrix in the repository.
+"Expected" below describes the apparent intent of the data model, not an independently
+approved policy. Live permission rows were not queried.
+
+Grant/assignment source | Expected from the model | Effective in request-time code
+Role grant | Role's configured module/action grants apply to a user assigned that role. |
+Granted only if users.role matches roles.role_code and a matching role_permissions row exists,
+unless overridden; user_roles is not consulted.
+Designation grant | A user's position grants its configured module/action rights. |
+Not directly evaluated by UserPermissionService; may appear in user detail, or work only if
+a matching positive user override exists.
+Per-user override | Explicit allow/deny supersedes inherited grants. |
+Honored by UserPermissionService when a row exists; however, the access-assignment API writes
+only selected positive rows and deletes prior rows, so omitted role grants can return.
+Additional user_roles row | If multiple roles are intended, their grants would ordinarily
+contribute or be explicitly disallowed. |
+Not used by the permission resolver; create/update writes one role link and replaces it.
+Project/location assignment | User access is limited to the assigned project/location rows. |
+Rows are stored and exposed, but project access helpers do not query them and return false for
+non-Super-Admin users.
+Active status and access dates | Inactive, not-yet-started, expired users/designations should
+not obtain active access. |
+User is_active is checked; user start/end dates and current designation active status are not
+checked during staff login/request authentication.
+
+4. BUSINESS-FUNCTION ROLE VALIDATION
+
+Business function names are not a fixed Java enum or a verified live catalog in the
+repository. Roles are dynamically read from the database. The source supports some functions
+as role checks and others as permission-module/action checks; designations are a separate
+catalog whose actual entries were not queried.
+
+Function | What the code supports | Audit result
+Super Admin | users.role=SUPER_ADMIN and/or is_super_admin=1; permission bypass and several
+scope/admin gates use these values. | Supported in code; actual accounts/flag consistency unknown.
+Admin | Role-based method checks; finance-specific service checks recognize ADMIN. | Supported
+as a role, but user-management/project scope helper methods still treat only Super Admin as
+authorized (see findings).
+Finance | FINANCE is an explicit role in finance controller/service checks, in addition to
+Finance module permissions. | Supported as role plus permission group; designation equivalence
+is not implemented at the authorization point.
+Data Entry | Frontend selects DATA_ENTRY as the default role if the role is returned by the
+database role catalog. | Not verified as an actual role row. Finance recovery entry API role
+check excludes DATA_ENTRY.
+Recovery | RECOVERY is accepted by the finance controller for general entry/report actions;
+verification, posting and reversal have narrower FINANCE/ADMIN/SUPER_ADMIN checks. | Supported
+as a role plus operation-specific restriction.
+Customer Care | Customer Care is a module/permission mapping. JwtAuthenticationFilter contains
+a department-to-ROLE_CUSTOMER_CARE mapping, but its position_code value is hard-coded NULL.
+The user.role can still independently create ROLE_CUSTOMER_CARE. | Role/department behavior
+is not consistently designation-derived; actual account mapping unknown.
+
+Frontend/API differences:
+
+- The frontend new-user form selects DATA_ENTRY by default only if that role exists. It posts
+  role and permission checkbox values, but provides no positionId, access dates, or
+  projectScopes. Source: frontend\src\main.tsx:3980-3987, 3995, 4002-4005.
+- Non-Super-Admin user creation requires a position and at least one project scope. The
+  frontend form does not provide those fields, so the normal form request cannot satisfy
+  that API requirement. Source: OperationsController.java:408-410.
+- The frontend's user update form does not call `/admin/users/{id}/access`; that separate
+  endpoint is where designation, dates, scopes and explicit rights are assigned. No frontend
+  caller for that route was found.
+- FinancePaymentController has a class-level role check allowing SUPER_ADMIN, ADMIN, FINANCE,
+  and RECOVERY, but not DATA_ENTRY. The frontend sends receipt entry to `/finance/recovery`.
+  A DATA_ENTRY user is therefore denied at this API even if a Finance ADD permission is
+  checked/granted. Source: backend\src\main\java\com\districtone\webv9\controller\FinancePaymentController.java:33-35, 335;
+  frontend\src\main.tsx:2251.
+- Frontend navigation renders available modules without filtering each item by the user's
+  permission set. APIs remain protected, so a user may see a screen/navigation entry and be
+  denied by route or module authorization. Source: frontend\src\main.tsx:94-101, 126;
+  SecurityConfig.java:70-72; FinancePaymentController.java:33-35.
+- The frontend permission editor loads a role's role_permissions list and edits per-user
+  permissions. It does not show job designation or project/date scope. Source:
+  OperationsController.java:234-249; frontend\src\main.tsx:3980-4005.
+
+5. CONFIRMED DISCREPANCIES / DEFECTS
+
+Finding 1 - Designation rights are not used by request-time permission evaluation.
+Severity: High.
+Evidence: OperationsController user detail joins webv9_position_permissions to display
+designation-derived rights (OperationsController.java:179-188). UserPermissionService uses
+role_permissions and user_permission_overrides but never joins webv9_position_permissions
+(UserPermissionService.java:21-38). JwtAuthenticationFilter selects a null designation
+position_code (JwtAuthenticationFilter.java:55-64). Result: correct designation may be shown
+but does not by itself grant its permissions. Confirmed from source; specific affected users
+require database review.
+
+Finding 2 - Stored project/location assignments are not honored for non-Super-Admins.
+Severity: High.
+Evidence: ProjectAccessService.canAccessProject returns false immediately unless the user
+is Super Admin; it then checks only that the project is active. canManageScope and
+canManageUser similarly return only the Super Admin check
+(ProjectAccessService.java:31-51). Assignment rows are stored and returned separately
+(OperationsController.java:190-193, 358-365). Result: non-Super-Admin users cannot pass
+project-scoped checks even when they have an assigned scope. This can deny business API
+access; some code filters data by these checks. Confirmed from source.
+
+Finding 3 - Effective access dates are not enforced.
+Severity: High.
+Evidence: assignment/create code validates only that end is not before start and persists
+the dates (OperationsController.java:328, 356, 431, 453). Login checks active status and
+password (AuthController.java:49); request-time staff identity checks active status only
+(JwtAuthenticationFilter.java:55-58). No date comparison is present in those checks.
+Future-started and expired-but-active accounts are therefore not rejected by these
+authentication paths. Confirmed from source; whether any such assignment exists is unknown.
+
+Finding 4 - Position activity is not revalidated on user requests.
+Severity: Medium.
+Evidence: assignment/create query positions with is_active=1 (OperationsController.java:316,
+412), but request-time identity uses a null position and UserPermissionService does not join
+positions (JwtAuthenticationFilter.java:55-64; UserPermissionService.java:16-38). Existing
+users assigned to a subsequently deactivated position are not rejected on that basis.
+Confirmed from source; actual inactive-position assignments unknown.
+
+Finding 5 - Positive-only access assignment can retain role grants not selected.
+Severity: High.
+Evidence: access assignment deletes all existing user overrides and reinserts selected
+permissions only as is_granted=1 (OperationsController.java:367-372). Permission evaluation
+falls back to role_permissions when there is no override (UserPermissionService.java:21-24,
+33-36). Thus omitted role grants can remain effective. Confirmed conditional defect; actual
+affected user rows are not available.
+
+Finding 6 - User-management role checks and scope helper disagree.
+Severity: Medium.
+Evidence: `/admin/users` allows SUPER_ADMIN, ADMIN, and DEPARTMENT_MANAGER by
+@PreAuthorize (OperationsController.java:148), but filters rows through canManageUser, which
+returns true only for Super Admin (ProjectAccessService.java:50-51). User detail and
+assignment paths use the same helper. Result: non-Super-Admin roles can pass the role gate
+but see no users or receive forbidden responses. Confirmed from source.
+
+Finding 7 - Data Entry role cannot use the frontend's receipt-entry API.
+Severity: Medium.
+Evidence: frontend posts to `/finance/recovery` (main.tsx:2251), and the class-level
+FinancePaymentController role check excludes DATA_ENTRY (FinancePaymentController.java:33-35).
+The frontend selects DATA_ENTRY as its new-user default if present (main.tsx:3983).
+Confirmed API/UI mismatch; actual role catalog and assignment are unverified.
+
+Finding 8 - Designation and scope management is not represented in the frontend form.
+Severity: Medium.
+Evidence: backend create/access DTOs accept position, dates, and scopes and the dedicated
+assignment route persists them (OperationsController.java:254-268, 285-288, 356-372).
+Frontend account form only includes department, role, permissions, active status, and user
+identity fields and submits to create/update routes (main.tsx:3995, 4002-4005). This also
+prevents the standard non-Super-Admin creation form from satisfying the backend's required
+position/scope checks. Confirmed from source.
+
+6. FINANCIAL SELF-APPROVAL / SEPARATION OF DUTIES
+
+The examined verification, posting, and reversal service paths do include separation checks:
+
+- Verification/rejection require an active users.role in SUPER_ADMIN, ADMIN, FINANCE and
+  refuse the receipt creator (FinanceVerificationService.java:40-42, 72-76, 136-140).
+- Posting requires an active finance-authorized role and refuses both the receipt creator
+  and verifier (AllocationBasedPaymentPostingService.java:24-32, 41-45).
+- Reversal requires an active finance-authorized role and refuses both the receipt creator
+  and verifier (PaymentReversalService.java:30-47, 110-116).
+- The HTTP endpoints also apply role checks; the permission filter maps verify/post/reverse
+  paths to receipt actions (FinancePaymentController.java:420-444;
+  OperationsController.java:115-122; PermissionAuthorizationFilter.java:84-89).
+
+Conclusion: the examined service paths prevent the same user from entering and verifying,
+entering/verifying and posting, or entering/verifying and reversing a receipt. They identify
+Finance authorization by users.role, not by designation grants or the general effective
+permission service. Whether other financial workflows have equivalent controls, or whether
+actual role assignments follow policy, requires a live-data and endpoint inventory review.
+
+7. UNVERIFIED ITEMS REQUIRING ADMINISTRATOR REVIEW
+
+- Actual users, usernames, departments, roles, positions, active flags, access dates, assigned
+  permissions, override rows, and project/location/city scopes.
+- Actual role catalog and permission catalog values, including whether the six named business
+  functions exist as roles, designations, permission groups, or current combined assignments.
+- Whether any users have conflicting users.role, user_roles, is_super_admin, or assigned
+  position data.
+- Whether there are active users with expired/future access dates or inactive designations.
+- Whether any role's role_permissions grants exceed the approved job-designation matrix.
+- Whether schema constraints/indexes ensure uniqueness and integrity across user_roles,
+  permission links, overrides, and scope rows.
+- The actual contents of the database were not inspected. The local live-configuration note
+  identifies MySQL but does not contain user assignment rows. No passwords, hashes, tokens,
+  or credentials were accessed or included in this report.
+
+8. PRIORITIZED CORRECTION PLAN
+
+Priority 0 - Obtain an administrator-approved, read-only export/query of users (excluding
+password_hash), active/inactive designations, role and permission catalogs, role grants,
+position grants, per-user overrides, dates, and project scopes. Use it to complete the matrix
+and identify affected accounts before any access changes.
+
+Priority 1 - Define one authoritative effective-permission rule and implement it consistently
+for API authorization and the permission data returned to the frontend. Resolve the intended
+precedence of role, designation, and explicit allow/deny overrides; ensure designation grants
+are evaluated on requests and revocation does not leave stale effective grants.
+
+Priority 2 - Implement project/location authorization against each user's stored
+webv9_user_project_scopes and enforce it consistently in list, detail, create, update, and
+report endpoints. Keep Super Admin bypass explicit; confirm Admin/Department Manager
+management boundaries.
+
+Priority 3 - Enforce access_starts_at/access_ends_at and active-position status at login and
+on each authenticated request (or through a revocation-aware session mechanism). Define
+timezone and inclusive/exclusive date semantics.
+
+Priority 4 - Align the frontend account/assignment workflow with backend DTOs and restrictions:
+job title, designation rights, dates, scope, department, role and overrides should be shown
+and saved coherently. Reconcile DATA_ENTRY with the actual receipt-entry endpoint role policy.
+
+Priority 5 - Validate finance route/action policy against approved role/designation assignments
+using tests that cover users with role-only, designation-only, explicit-deny, expired,
+inactive-position, and scoped/unscoped accounts. Preserve the existing separate-user checks
+for receipt entry, verification, posting, and reversal.
+
+END OF AUDIT

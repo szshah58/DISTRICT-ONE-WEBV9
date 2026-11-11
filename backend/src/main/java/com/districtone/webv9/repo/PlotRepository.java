@@ -1,0 +1,1 @@
+package com.districtone.webv9.repo; import com.districtone.webv9.model.Plot; import org.springframework.data.jpa.repository.JpaRepository; public interface PlotRepository extends JpaRepository<Plot,Long>{ long countByStatus(String status); }

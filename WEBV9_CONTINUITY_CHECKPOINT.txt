@@ -1,0 +1,40 @@
+﻿WEBV9 CONTINUITY CHECKPOINT
+Date: 2026-11-01
+
+PROJECT
+Path: D:\WEB_V9
+PC: DISTRICT-ONE
+
+PROBLEM
+WEBV9 works on localhost and from the same network.
+Access from other networks fails.
+
+CONFIRMED CONFIGURATION
+Frontend: port 8080
+Backend: port 8081
+Public IP: 180.149.219.241
+PC LAN IP: 162.12.211.227
+Database: district_one, MySQL 8.4.13, port 3306
+
+LATEST LISTENER RESULTS
+Frontend: 0.0.0.0:8080, PID 18272
+Backend: [::]:8081, PID 18672
+
+ALREADY CHECKED — DO NOT REPEAT
+Router WAN IP and public IP
+Router port forwarding
+CORS configuration
+Local and same-network connectivity
+Backend restart and database connection
+Windows Firewall profile status
+
+IMPORTANT RESTRICTIONS
+Do not modify the Receipt Module.
+Do not modify customer data or database configuration.
+Do not weaken authentication.
+Do not repeat completed tests.
+Do not change working configuration without approval.
+
+NEXT OBJECTIVE
+Identify why requests from external networks cannot reach WEBV9.
+Use existing evidence and propose one targeted next action.

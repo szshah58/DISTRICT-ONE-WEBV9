@@ -1,0 +1,1 @@
+package com.districtone.webv9.repo; import com.districtone.webv9.model.Customer; import org.springframework.data.jpa.repository.*; import java.util.*; public interface CustomerRepository extends JpaRepository<Customer,Long>{ List<Customer> findByNameContainingIgnoreCaseOrMbrNoContainingIgnoreCase(String name,String mbrNo); }

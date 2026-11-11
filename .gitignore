@@ -1,0 +1,64 @@
+﻿# ==========================================
+# DISTRICT ONE WEBV9 - GIT PROTECTION
+# ==========================================
+
+# Java / Maven build output
+**/target/
+**/build/
+*.class
+*.jar
+*.war
+
+# Frontend dependencies and builds
+**/node_modules/
+**/dist/
+**/coverage/
+
+# IDE and editor files
+.vs/
+.idea/
+.vscode/
+*.iml
+
+# Backup directories
+**/*BACKUP*/
+**/*backup*/
+
+# Logs and temporary files
+logs/
+**/logs/
+*.log
+*.tmp
+*.bak
+*.old
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+credentials/
+secrets/
+
+# Operating system files
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Git temporary files
+*.swp
+*.swo
+
+# ==========================================
+# WEBV9 LOCAL / OBSOLETE CONFIGURATION FILES
+# ==========================================
+/WEBV9_LIVE_CONFIGURATION_NOTE.txt
+/START-WEBV9-AUTO_PREVIOUS_20261103_112959.ps1
+/START-WEBV9-AUTO_PRE_PORT_FIX_20261103_113549.ps1
+/tools/apache-maven-3.9.11/
+/frontend/tsconfig.tsbuildinfo

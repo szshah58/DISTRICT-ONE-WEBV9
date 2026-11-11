@@ -1,0 +1,1060 @@
+DISTRICT ONE WEBV9 - MODULE REPORTS INVENTORY
+Updated: 2026-11-02
+Project: D:\WEB_V9
+
+CURRENT VERIFICATION ADDENDUM
+
+Appendix G below is the current audit. Its five-status classifications
+supersede the preliminary labels in the earlier catalogue above. No report is
+classified as IMPLEMENTED AND VERIFIED because no deployed-database query or
+runtime UI walkthrough was performed.
+
+SCOPE AND LIMITATIONS
+
+This is a source-code review of the frontend, controllers, authorization
+services, workflow repository, and checked-in SQL files. No live database
+connection was available; actual schema version, user assignments, rows,
+transaction statuses, and runtime SQL compatibility are NOT VERIFIED. No
+customer/financial records or database objects were changed.
+
+The report catalogue distinguishes:
+- IMPLEMENTED: a report or report-like query exists and can return real source
+  data.
+- PARTIALLY IMPLEMENTED: an operational list or summary exists, but requested
+  filters, totals, reconciliation, export, scoping, or business status detail
+  are incomplete.
+- MISSING: no safe source implementation or supported data model was found.
+
+New Reports workspace export controls operate only on rows returned by the
+authorized API (maximum 1,000 per request): CSV, Excel-compatible HTML with an
+.xls extension, and browser Print / Save as PDF. This is not a native XLSX or
+server-generated PDF service. When a result is truncated, the screen warns
+that displayed summary totals cover only the returned rows. The new controller
+SQL was tested with mocked JDBC, not executed against a live database.
+
+EXECUTIVE SUMMARY
+
+The Reports navigation and filterable workspace now provide:
+1. Plot inventory.
+2. Plot merging register/history.
+3. Plot cancellation/refund register.
+4. Overdue receivables aging.
+5. Finance receipt register.
+
+These are real-source reports, not demo or placeholder rows. The new endpoints
+require Reports/VIEW and the relevant source-module VIEW right; report SQL
+limits rows to active project/location scopes. CSV, Excel-compatible .xls,
+and print/PDF are browser-side actions over the returned data.
+
+The existing application also has operational screens and APIs for bookings,
+transfers, payment verification/posting, customer statements, customer-care
+cases, audit logs, and configuration. Most are not formal reports and do not
+have the new export/summary behavior.
+
+Required surcharge-waiver, project/location summary, cashbook, advances,
+plot/possession aging, and cancellation-trend reports are NOT IMPLEMENTED
+because a suitable authoritative source/report model was not identified.
+In particular no surcharge-waiver request/approval/posting entity or checked-in
+SQL schema was found. Requested/approved adjustments must not be re-labelled
+as posted waivers.
+
+A. CONSOLIDATED REPORT CATALOGUE
+
+No. | Module / report | Status | Screen / API | Filters and formats | Access / tests
+
+1 | Dashboard summary and charts | PARTIAL | Dashboard; GET /api/v1/dashboard
+  | Chart range only; no project/location/date request filters or exports
+  | Super Admin source gate; no new report test
+2 | User/role/designation permissions | PARTIAL | Admin & Setting; GET
+  /api/v1/admin/users, /{id}, /options, /positions
+  | No report filters or export; user detail has effective permissions/scopes
+  | Users & Roles gate plus management-scope checks; no live assignments
+3 | Audit log | PARTIAL | Admin > Audit Log; GET
+  /api/v1/admin/config/audit/log and /api/v1/audit
+  | Bounded lists, no date/user/module/action filter or export
+  | Endpoint gates differ; see section C
+4 | Project/location portfolio summary | MISSING | No consolidated report
+  | No source-backed location-level totals or export found
+5 | Plot inventory | IMPLEMENTED | Reports > Plot Inventory; GET
+  /api/v1/reports/plots/inventory
+  | Search, status, availability, project ID; CSV, Excel-compatible .xls,
+  print/PDF; API capped at 1,000 rows
+  | Reports/VIEW + Plots & Sales/VIEW + active assigned project scope;
+  mocked controller scope test
+6 | Plot availability | PARTIAL | Plot inventory availability filter; same API
+  | Availability/status filters; same exports
+  | Same as plot inventory; derived status semantics need business validation
+7 | Plot merging register/history | IMPLEMENTED | Reports > Plot Merging
+  Register & History; GET /api/v1/reports/sales/merges
+  | Date, status, project, location, customer; CSV, Excel-compatible .xls,
+  print/PDF; includes workflow/transfer details; capped at 1,000; status counts
+  only, no financial-transfer reconciliation total
+  | Reports/VIEW + Plots & Sales/VIEW + both source/result projects in scope;
+  no SQL/live-schema execution test
+8 | Booking register | PARTIAL | Sales > Bookings; GET /api/v1/sales/bookings
+  and /registrations
+  | Operational filters only; no export/reconciled totals found
+  | Plots & Sales permission and controller scope; no new report test
+9 | Customer booking list | PARTIAL | Sales/customer detail; GET
+  /api/v1/sales/members/{memberId}/bookings
+  | Member-specific; no formal date/export report
+  | Existing customer/sales access controls; live scope not verified
+10 | Transfer register | PARTIAL | Sales > Transfers; GET /api/v1/sales/transfers
+  | Operational list; no export or trend totals found
+  | Plots & Sales; no new report test
+11 | Cancellation/refund register and history | IMPLEMENTED | Reports >
+  Plot Cancellation & Refund Register; GET
+  /api/v1/reports/sales/cancellations
+  | Date, cancellation status, refund status, project, location, customer;
+  CSV, Excel-compatible .xls, print/PDF; history and settlement lines included;
+  counts by approval/refund status, but no approved-vs-posted refund sum
+  | Reports/VIEW + Plots & Sales/VIEW + project scope; no SQL/live-schema test
+12 | Recovery / receipt register | IMPLEMENTED | Reports > Finance Receipt
+  Register; GET /api/v1/reports/finance/receipts
+  | Date, status, payment method, location, customer; CSV, Excel-compatible
+  .xls, print/PDF; capped at 1,000
+  | Reports/VIEW + Finance/VIEW + every allocation must be in assigned
+  projects; mocked scope test
+13 | Pending-verification register | PARTIAL | Finance > Payments & Recovery;
+  GET /api/v1/finance/payments?status=... or report receipt register
+  | Existing list has status/date/member/project/location/payment filters;
+  no standalone summary/export report
+  | Finance/VIEW; sensitive payment list uses existing scope checks; no new
+  list integration test
+14 | Verified transactions register | PARTIAL | Same payment list, status
+  filter; GET /api/v1/finance/payments
+  | Status/date and other list filters; no dedicated verification report/export
+  | Finance/VIEW; authorization also requires action rights for mutations
+15 | Posted transactions register | PARTIAL | Same payment list, posted/status
+  filters; GET /api/v1/finance/payments
+  | No distinct posted totals/reconciliation export
+  | Finance/VIEW and existing payment scope; no new report test
+16 | Reversal/cancellation register | PARTIAL | Reversed payment status and
+  audit/finance adjustment screens; no dedicated reversal report endpoint
+  | No date/reason/actor reconciliation report/export
+  | Finance reversal action is separately permission-gated; report gap remains
+17 | Charge-wise collections | PARTIAL | Dashboard charge-recovery chart;
+  payment list includes charge metadata
+  | No scoped date-filtered charge report with full totals/export
+  | Dashboard is system-wide; payment API uses Finance permission/scope
+18 | Outstanding dues | PARTIAL | Finance > Receivables / Outstanding;
+  GET /api/v1/finance/receivables
+  | Due date/status/description and balances; no report filters/exports or
+  aging buckets in this endpoint
+  | Finance/VIEW and booking scope enforced by existing controller
+19 | Advance payments | MISSING | No authoritative advance-balance report found
+  | No confirmed advance classification/reconciliation source
+  | Not implemented
+20 | Cash/bank summary | PARTIAL | Finance summary and account lists exist
+  | Counts/current-period amounts, not scoped opening/closing balances or
+  reconciled cash/bank totals; no report export
+  | Finance permission; account/config endpoints have stronger Super Admin
+  source gates
+21 | Cashbook | MISSING | No complete dated cashbook with opening/closing
+  balance and transaction audit was found
+  | No supported filters/export
+  | Not implemented
+22 | Bank reconciliation | PARTIAL | GET
+  /api/v1/finance/payments/bank-reference-conflicts
+  | Detects conflicts; not statement import, matching, or reconciled balance
+  | Finance/source authorization; no standalone export
+23 | Customer statement | IMPLEMENTED WITH GAPS | Finance > Customer Ledger;
+  POST /api/v1/finance/ledger/report
+  | Customer/booking/statement criteria; browser print/Save PDF
+  | Finance/VIEW; prior ledger test failures remain; not validated against live DB
+24 | Customer ledger register | PARTIAL | GET /api/v1/finance/ledger/{memberId}
+  and customer portal ledger endpoints
+  | Individual lookup/list data; no full register or export
+  | Finance/customer identity-specific paths
+25 | Outstanding customer balances | PARTIAL | Ledger statement and
+  receivables list
+  | No consolidated scoped balance summary/reconciliation export
+  | Existing Finance and customer ownership controls
+26 | Instalment schedules | PARTIAL | Admin > Instalment Plan Setup; GET
+  /api/v1/admin/config/plans/schedules
+  | Setup schedule feed (capped); not a customer-by-customer realized schedule
+  | Admin configuration gate; no export
+27 | Customer payment history | PARTIAL | Finance ledger/payment history and
+  customer portal ledger APIs
+  | Individual history, not a consolidated export report
+  | Finance permission or authenticated customer ownership
+28 | Customer directory | PARTIAL | Customer Care lookup; GET
+  /api/v1/customer-care/customers
+  | Lookup/list, not a filterable/exportable report
+  | Customer Care permission; scope must be confirmed for all customer-care
+  endpoints
+29 | Enquiries, complaints, pending cases, follow-ups | PARTIAL | Customer
+  Care screens; GET /api/v1/customer-care/complaints, /enquiries, /followups,
+  /tickets, /feedback and /summary
+  | Operational status lists and headline counts; no unified date/SLA/export
+  report
+  | Customer Care VIEW; no new report-specific test
+30 | Unbooked-plot aging | MISSING | No confirmed availability-start date
+  report basis found
+  | Aging anchor/categories not established
+  | Not implemented
+31 | Plot aging | MISSING | No authoritative plot-age date basis/report found
+  | Needs business definition and supported date field
+  | Not implemented
+32 | Booking-to-possession aging | MISSING | No supported possession milestone
+  report was identified
+  | Needs possession date/status source
+  | Not implemented
+33 | Overdue receivables aging | IMPLEMENTED | GET
+  /api/v1/reports/finance/receivables-aging
+  | As-of date, due-date from/to, 1-30/31-60/61-90/90+ bucket, project,
+  location, customer; CSV, Excel-compatible .xls, print/PDF; capped at 1,000
+  | Reports/VIEW + Finance/VIEW + project scope; date binding and empty-scope
+  tests pass; live-schema test absent
+34 | Cancellation trend analysis | MISSING | Register only; no trend aggregation
+  | Requires agreed cancellation-date/status definitions
+  | Not implemented
+35 | Surcharge waiver report (required) | MISSING | No surcharge waiver
+  request/approval/posting model or checked-in SQL table definition found
+  | Cannot safely calculate requested/approved/posted/remaining amounts,
+  waiver percent, reason, approver, dates, status, or totals
+  | Do not substitute generic adjustments or treat approval as posting
+36 | Admin configuration registers | PARTIAL | Charges, banks, cash sites,
+  instalment plans/schedules, surcharge rules and settings in Admin
+  | Configuration lists, not operational reports; no report export
+  | Admin configuration rights; surcharge rules are not waivers
+
+B. NEW REPORT DETAIL AND RULES
+
+1. Plot Inventory
+
+GET /api/v1/reports/plots/inventory calls the existing PlotInventoryService
+once per active project returned by ProjectAccessService.accessibleProjectIds.
+An explicit project ID outside that list returns no data and does not query the
+inventory service. Search/status/availability and project filters are
+available. Rows use the existing inventory data model (project, block, plot,
+category/type/status and booking/member fields when present); no new plot
+records are created. The result is capped at 1,000 rows.
+
+2. Plot Merging Register & History
+
+GET /api/v1/reports/sales/merges reads webv9_plot_merges and related project,
+plot, member, booking, and user records. It reports source/original and
+resulting plots, source/result booking and customer, both project/location
+references, merge/effective and workflow timestamps, decision remarks,
+submitter/approver, merge event history, and financial transfers from
+SalesWorkflowRepository. It requires both source and target projects to be
+within the caller's active scope; partial visibility of a cross-scope merge is
+not allowed.
+
+Filters: merge date range, status, project, location, customer/member number.
+Summary: row count grouped by status for returned rows. Maximum 1,000;
+truncation is indicated and totals are explicitly marked as limited to
+displayed rows. No live DB execution verified.
+
+3. Plot Cancellation / Refund Register
+
+GET /api/v1/reports/sales/cancellations reads cancellation, booking, plot,
+member, project, user, refund-disbursement, workflow-event, and settlement-line
+data. Fields include cancellation/booking/plot references, requested date,
+raw cancellation status/reason, submitted and decision dates, approver and
+decision remarks, approved deductions/refund, project/location/customer,
+refund status, refund/posted amount, payout reference, refund approval and
+completion dates, event history, and settlement lines.
+
+Filters: cancellation date range, raw cancellation status, raw refund status,
+project, location, customer/member number. The report preserves source statuses;
+it does not relabel an unrecognized state as approved/completed/rejected.
+No live DB execution verified.
+
+4. Overdue Receivables Aging
+
+GET /api/v1/reports/finance/receivables-aging computes outstanding as
+max(original_amount + surcharge_amount - adjustment_amount - paid_amount, 0)
+from webv9_receivables. Only positive balances with due_date before the
+selected as-of date are returned. Aging is explicitly measured as
+DATEDIFF(asOfDate, due_date), with buckets 1-30, 31-60, 61-90, and 90+ days.
+The source is receivables, not a verified instalment schedule/collection
+reconciliation.
+
+Filters: as-of date, due-date from/to, bucket, project, location, customer,
+member number or registration number. Summary reports outstanding by bucket,
+counts and overall amount for returned rows. A SQL bind-order defect and an
+immutable-summary mutation defect found during testing were corrected.
+
+5. Finance Receipt Register
+
+GET /api/v1/reports/finance/receipts reads payments_receipts and payment
+allocations. It exposes receipt number/date/amount/method/status, references,
+verification/posting dates, customer/member, and authorized allocation
+locations. Date, status, payment method, location, and customer filters are
+supported. Summary includes count and amount by status for returned rows.
+Rows with allocations across any unauthorized project are excluded in full;
+partial allocation visibility is not permitted.
+
+C. ACCESS, EXPORT, AND KNOWN CONTROL GAPS
+
+New report APIs under /api/v1/reports/{plots,sales,finance} require Reports/VIEW
+plus Plots & Sales/VIEW or Finance/VIEW for the corresponding source. Backend
+checks remain authoritative even if a client manually calls an endpoint.
+ProjectAccessService supplies active project IDs only for active accounts,
+active positions, compatible departments, valid access dates, active projects,
+and matching project/location/city scope. The existing permission resolver
+also checks designation grants and user overrides. Super Admin uses the
+existing system-wide bypass.
+
+The Reports UI is shown only when the current user has Reports access; it only
+offers report types whose source-module view is present. Export runs in the
+browser over the same authorized/truncated data, not through an unguarded
+download route. CSV cells are quoted and formula-leading text is escaped.
+Excel output is HTML-table compatible .xls, not an XLSX workbook. Print/PDF
+uses the browser print dialog; print styles hide report controls.
+
+The legacy GET /api/v1/reports/summary remains a separate, Super-Admin-only
+system-wide count summary. It is not the new scoped Reports workspace and has
+no date/project filters. The Dashboard is also system-wide and Super-Admin
+gated. User/role and audit APIs remain separate admin surfaces, not new report
+exports.
+
+Checked-in SQL files did not contain DDL for the workflow/report tables used by
+the new register queries. Runtime schema compatibility must be confirmed
+against the actual deployment before release. Existing system screens/APIs
+outside the new ReportsController must be independently reviewed before
+assuming every financial or customer-care list has identical project scope.
+
+D. PRIORITY REVIEW LIST
+
+P1. Define and implement a real surcharge-waiver lifecycle and schema, with
+    requested, approved, posted, rejected/cancelled states, reason, approver,
+    timestamps, accounting linkage, audit trail, and scope-aware reporting.
+P1. Validate report SQL against a read-only copy of the deployed schema and
+    non-sensitive fixtures; add integration tests for merge/cancellation/
+    receipt report queries and cross-project allocations.
+P1. Add role/action policy for report access and test it against actual
+    designation and user-override assignments before deployment.
+P2. Add location summary, cashbook, advances, full bank reconciliation,
+    reversal register, and charge-wise collection reporting only after source
+    records/reconciliation definitions are agreed.
+P2. Agree aging definitions and implement unbooked-plot, plot, booking-to-
+    possession, and instalment-schedule aging from verified date/status fields.
+P2. Add customer-care SLA/pending-case and cancellation-trend reports, with
+    agreed statuses and date rules.
+P3. Provide server-side pagination/export and complete aggregate totals for
+    datasets exceeding 1,000 rows; assess XLSX/PDF requirements.
+P3. Align existing Dashboard, summary, customer ledger, Finance, Sales,
+    Customer Care, and Admin reports with the same scope/filter/export policy.
+
+E. BUSINESS DISCUSSION CHECKLIST
+
+- Which authority approves a surcharge waiver, and what exact event counts as
+  posted to the ledger?
+- Are waiver percentages calculated against original surcharge, requested
+  amount, approved amount, or posted amount? How are partial postings handled?
+- Which cancellation/refund states are valid, and what distinguishes requested,
+  approved, completed, rejected, and cancelled?
+- Does cancellation date, approval date, or completed refund date drive trend
+  analysis?
+- Which dates define plot age, unbooked age, and booking-to-possession aging?
+- Are overdue aging buckets fixed at 1-30/31-60/61-90/90+, or do finance users
+  need alternate buckets and future-due balances?
+- What is the approved source of cash/bank opening balances, instruments,
+  posted ledger entries, advances, and reconciliation statements?
+- Which job designations may view or export each customer/financial report?
+- Should exports be capped, paginated, watermarked, logged, or require elevated
+  rights beyond on-screen viewing?
+
+F. EVIDENCE STILL REQUIRED
+
+- Read-only access to the deployed schema/version and confirmation of columns
+  and indexes for sales merge, cancellation/refund, payment allocation,
+  receivable, authorization, and audit objects.
+- Actual, authorized user/designation/role/department/project/location
+  assignments and effective dates. None are claimed in this report.
+- Representative sanitized records covering merge, cancellation, refund,
+  mixed-project payment allocations, all receipt statuses, overdue balances,
+  and financial postings.
+- Business-approved status dictionaries, accounting event definitions, and
+  aging policies.
+- A DBA-reviewed deployment plan and any approved additive/reversible schema
+  migration needed for surcharge waivers and other missing source models.
+
+EVIDENCE REFERENCES
+
+- backend\src\main\java\com\districtone\webv9\controller\ReportsController.java
+  (new report endpoints and data shaping: lines 47, 66, 145, 215, 291).
+- backend\src\main\java\com\districtone\webv9\security\PermissionAuthorizationFilter.java
+  (report and source-module gates: lines 112-127).
+- backend\src\main\java\com\districtone\webv9\security\ProjectAccessService.java
+  (active scoped project IDs: lines 37-55).
+- backend\src\main\java\com\districtone\webv9\security\UserPermissionService.java
+  (account/date/designation, scope, permission/override resolution: lines 18,
+  68, 90, 121, 144).
+- backend\src\main\java\com\districtone\webv9\repo\SalesWorkflowRepository.java
+  (merge/cancellation event trails, transfers, and settlement lines).
+- frontend\src\main.tsx (Reports navigation and workspace: lines 115-167,
+  3874-4030).
+- frontend\src\styles.css (browser-print report rules: lines 472 onward).
+- backend\src\main\java\com\districtone\webv9\controller\OperationsController.java
+  (legacy receivables, audit, and summary: lines 86, 119, 129).
+- backend\src\main\java\com\districtone\webv9\controller\FinancePaymentController.java
+  (payment list and existing filters: lines 79 onward).
+- backend\src\main\java\com\districtone\webv9\controller\CustomerCareController.java
+  (directory, summary, cases and follow-up APIs: lines 55, 140, 155, 209, 272).
+
+VERIFICATION
+
+- Focused backend report/authorization tests: 17 run, 17 passed.
+- Full backend test suite: 187 run, 182 passed, 5 failed. The five failures
+  are the existing password-policy expectations and customer-ledger schema/
+  historical-payment expectations documented before this report work.
+- Frontend TypeScript check: passed using the direct project entrypoint command.
+- Vite production build: passed; Vite reported the existing large-chunk
+  advisory.
+- No live database query, migration, or record change was performed.
+
+G. REPORT-BY-REPORT VERIFICATION AUDIT
+
+Audit boundary and evidence
+---------------------------
+This is a read-only source/test review. The live database and running UI were
+not accessed. Checked-in migration files found are:
+database\migrations\001_webv9_payments_receipts.sql,
+database\migrations\023_webv9_historical_receipt_backfill.sql, and
+database\migrations\025_webv9_receipt_metadata.sql. These do not establish the
+deployed schema version or validate the report SQL against production.
+
+The current Reports workspace in frontend\src\main.tsx:3874-4030 defines five
+report choices: plot inventory, merge history, cancellation/refunds,
+receivables aging, and receipt register. Their APIs are in
+backend\src\main\java\com\districtone\webv9\controller\ReportsController.java
+at methods plotInventory, plotMerges, cancellations, receivablesAging, and
+financeReceipts. New-workspace filters, source permissions, project-scope
+queries, and browser-side output are verified only from source. CSV,
+Excel-compatible HTML with .xls extension, and browser print/Save as PDF are
+available for returned rows; this is not native XLSX or server-generated PDF.
+Rows are capped at 1,000. Exports use the rows already returned to the browser
+and do not have a separate EXPORT-permission check.
+
+The new report APIs require Reports/VIEW and the relevant Finance or
+Plots & Sales VIEW permission in PermissionAuthorizationFilter. Their project
+set is obtained from ProjectAccessService.accessibleProjectIds; account
+status, access dates, active designation/department compatibility, active
+projects, and assigned location/city are checked by the permission/scope
+services. UI hiding is not the security boundary. These are source-code
+findings, not confirmation of any user's actual rights.
+
+All entries below have live database verification: NOT PERFORMED; runtime UI
+verification: NOT PERFORMED (static frontend source reviewed only). Unless an
+entry says otherwise, no report-specific automated test exists. Existing test
+successes do not prove SQL compatibility, correct live values, or report
+completeness.
+
+Catalogue
+---------
+
+1. Dashboard summary and charts
+Status: IMPLEMENTED — NOT FULLY VERIFIED
+Requirement: earlier report inventory; Dashboard module.
+Backend/API: GET /api/v1/dashboard, DashboardController.summary.
+Screen/data: Dashboard; legacy receivables, payment receipts, registrations,
+plots, and development-charge calculations.
+Scope/rights: source denies non-Super-Admin because aggregates are system-wide;
+no project/location-filtered dashboard.
+Filters/output: chart/range controls in UI; no report export or print report
+confirmed. Totals and aging formulas are code-visible but not reconciled to
+live data.
+Tests: no live-query/dashboard test in the focused report tests.
+
+2. User, role, designation, permission, and scope audit
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier user/designation audit and Administration & Settings
+report requirements.
+Backend/API: OperationsController user, position, permission, scope, and
+audit endpoints, including /api/v1/admin/users and /api/v1/admin/positions.
+Screen/data: Admin > Create Users / Job Title Permissions; users, positions,
+permissions, overrides, and project scopes are source-code data.
+Scope/rights: Users & Roles and Super-Admin/system-wide checks vary by
+operation; effective rights are resolved by UserPermissionService.
+Filters/output: user and designation management views exist; no consolidated
+permission-audit report, historical comparison, or report export found.
+Tests: generic designation/override/expiry authorization tests passed; no
+live assignments verified.
+
+3. Audit log report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Administration & Settings and audit-log requirements.
+Backend/API: GET /api/v1/admin/config/audit/log and GET /api/v1/audit;
+AdminConfigurationController and OperationsController read system_logs.
+Screen/data: Admin > Audit Log; system_logs fields include user, action,
+module, details, and timestamp.
+Scope/rights: system-wide log endpoints require Super Admin in the current
+filter/controller paths.
+Filters/output: newest-first bounded lists; no date/user/module/action search
+or CSV/Excel/PDF report identified.
+Tests: no report-specific audit-log test.
+
+4. Project/location portfolio summary
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier Projects and plots location-summary report.
+Backend/API/screen: no consolidated project/location report endpoint or
+Reports workspace entry found.
+Data: project and plot records exist in source, but the required definitions
+for totals, availability, bookings, receivables, and reconciliation by
+location are not established as one report.
+Scope/rights, filters, outputs, tests: no report implementation to verify.
+
+5. Plot inventory
+Status: IMPLEMENTED — NOT FULLY VERIFIED
+Requirement: earlier plot inventory report.
+Backend/API: GET /api/v1/reports/plots/inventory; ReportsController calls
+PlotInventoryService.
+Screen/data: Reports > Plot Inventory; projects, blocks, plots, latest
+booking/registration/member, transfer, cancellation, and merge state.
+Scope/rights: Reports/VIEW + Plots & Sales/VIEW; only active assigned project
+IDs are queried.
+Filters/output: q, projectId, plot status, availability; count summary;
+screen/search, CSV, Excel-compatible .xls, browser print/PDF; maximum 1,000.
+Tests: mocked assigned-project and out-of-scope tests passed; no live SQL/UI.
+
+6. Plot availability
+Status: IMPLEMENTED — NOT FULLY VERIFIED
+Requirement: earlier plot availability report.
+Backend/API/screen/data: same inventory API, Reports screen, and
+PlotInventoryService as item 5.
+Scope/rights: same Reports and Plots & Sales VIEW plus assigned project scope.
+Filters/output: availability (AVAILABLE, COMMITTED, UNAVAILABLE), status,
+search, project; same browser outputs and cap as item 5.
+Tests: source-level inventory scope tests passed; no live state validation.
+Availability is derived from plot, booking, transfer, cancellation, and merge
+status; business interpretation has not been validated with users.
+
+7. Plot merge register/history
+Status: IMPLEMENTED — NOT FULLY VERIFIED
+Requirement: earlier plot merging register and history requirements.
+Backend/API: GET /api/v1/reports/sales/merges; ReportsController and
+SalesWorkflowRepository merge event/transfer readers.
+Screen/data: Reports > Plot Merging Register & History; webv9_plot_merges,
+plots, blocks, projects, members, bookings, users, merge events, and financial
+transfer rows.
+Scope/rights: Reports/VIEW + Plots & Sales/VIEW; both source and resulting
+projects must be in active scope.
+Filters/output: date range, status, project, location, customer; status-count
+summary; screen/search, CSV, .xls-compatible Excel, print/PDF; 1,000 cap.
+Fields include original/result plots, project/location, booking/customer,
+effective/workflow dates, submitter/approver, decisions, event trail, and
+transfer details.
+Tests: no merge SQL/history report test; mocked existing test suite does not
+validate actual table/column compatibility.
+
+8. Booking register
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Sales and booking reports.
+Backend/API: GET /api/v1/sales/bookings; SalesController.listBookings.
+Screen/data: Sales booking list; sales_bookings, registrations, members,
+plots, blocks, and projects.
+Scope/rights: Plots & Sales VIEW; rows are filtered by active project access.
+Filters/output: q and status, bounded list; no booking-register totals or
+report export confirmed.
+Tests: no dedicated booking-report test; live data/UI not verified.
+
+9. Customer booking report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier customer bookings and customer ledger/report requirements.
+Backend/API: GET /api/v1/finance/members/{memberId}/bookings and Customer Care
+customer detail APIs.
+Screen/data: customer detail/ledger views; member registrations, bookings,
+plots, blocks, and project.
+Scope/rights: booking rows are scope-filtered in the finance endpoint;
+customer-care profile requires member scope.
+Filters/output: individual member only; no consolidated report, date filters,
+totals, or export confirmed.
+Tests: no dedicated customer-booking report test.
+
+10. Transfer register/history
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Sales transfer report.
+Backend/API: GET /api/v1/sales/transfers; SalesController.listTransfers.
+Screen/data: Sales > Transfers; webv9_transfers, bookings, plots, blocks,
+members, and creating user.
+Scope/rights: Plots & Sales VIEW and booking project-scope filtering.
+Filters/output: operational list; no date/status filters, aggregate report, or
+export confirmed.
+Tests: no report-specific transfer test.
+
+11. Plot cancellation, refund, approval, and history
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier plot cancellation/refund register, pending approvals,
+cancelled plots, and cancellation history.
+Backend/API: GET /api/v1/reports/sales/cancellations; ReportsController plus
+SalesWorkflowRepository cancellation event/settlement-line readers.
+Screen/data: Reports > Plot Cancellation & Refund Register;
+webv9_cancellations, webv9_sales_refund_disbursements, bookings, plots,
+projects, members, users, events, and settlement lines.
+Scope/rights: Reports/VIEW + Plots & Sales/VIEW; project scope enforced.
+Filters/output: cancellation date, cancellation status, refund status,
+project, location, customer; status-count summary; screen/search, CSV,
+.xls-compatible Excel, print/PDF; 1,000 cap.
+Evidence/gap: raw cancellation/refund statuses, cancellation approver,
+refund amounts/status, and event/settlement lines are selected. Refund-specific
+approver/completer identities and approved-versus-posted aggregate
+reconciliation are not in the report row/summary. Runtime states are not
+verified.
+Tests: mocked cancellation status-summary test passed; no live SQL/UI test.
+
+12. Recovery register/report
+Status: IMPLEMENTED — NOT FULLY VERIFIED
+Requirement: earlier Finance recovery register and recovery report.
+Backend/API: GET /api/v1/reports/finance/receipts; financeReceipts in
+ReportsController.
+Screen/data: Reports > Finance Receipt Register; payments_receipts and
+webv9_payment_allocations, with customer, booking, registration, project,
+location, charge, and verification/posting metadata.
+Scope/rights: Reports/VIEW + Finance/VIEW; receipts with any allocation
+outside scope are excluded in full.
+Filters/output: date, status, payment method, location, customer; count/amount
+by status; browser outputs and 1,000 cap.
+Tests: mocked allocation-scope and filter parameter test passed; this does not
+validate live receipt statuses or SQL schema.
+
+13. Pending finance verification report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier pending verification report.
+Backend/API: GET /api/v1/finance/payments with status and approvalStatus;
+FinancePaymentController.listPayments.
+Screen/data: Finance > Payments & Recovery; payments_receipts, members,
+allocations, project/location, charge, and user data.
+Scope/rights: Finance/VIEW; each payment is filtered through payment
+allocation project scope.
+Filters/output: status, dates, member, receipt, registration, party, project,
+location, method, bank reference, posted flag, approval status, q, page and
+pageSize; operational screen only, no report-specific export/totals confirmed.
+Tests: no dedicated pending-verification report test; live status mapping not
+verified.
+
+14. Verified transactions report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier verified transaction report.
+Backend/API/screen/data: same Finance payment list as item 13; VERIFIED status
+and verified metadata are available in source.
+Scope/rights: Finance/VIEW and allocation-based payment scope; VERIFY action
+is separately enforced for mutations.
+Filters/output: status/date and payment list filters from item 13; no separate
+verification totals, verifier reconciliation, or export report.
+Tests: authorization tests cover distinct verify permission, not report
+results; live data/UI not verified.
+
+15. Posted transactions report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier posted transaction report.
+Backend/API/screen/data: same Finance payment list; status, posted_at, and
+posting metadata from payments_receipts.
+Scope/rights: Finance/VIEW and payment scope; POST action is separately
+enforced.
+Filters/output: posted flag and payment list filters; no GL reconciliation
+report, totals, or report export found.
+Tests: authorization tests distinguish posting permission; no report-data
+test or live posting reconciliation.
+
+16. Reversal/cancellation finance register
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier reversals and cancelled transactions report.
+Backend/API/data: reversal actions and reversal records are in the Finance
+workflow; payment status/audit sources are present. No dedicated reversal
+report endpoint found.
+Screen: Finance operations/transaction history; no reversal report screen.
+Scope/rights: payment scope and RECEIPT_REVERSE action apply to reversal
+operations; report filters/authorization cannot be confirmed because a report
+is absent.
+Filters/output/tests: no dedicated date, actor, reason, amount reconciliation,
+or export report/test found.
+
+17. Charge-wise collections
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier charge-wise collection report.
+Backend/data: payment list includes charge metadata; dashboard has collection
+summary data. No dedicated scoped charge aggregation endpoint found.
+Screen: Finance payment details/dashboard; no charge-wise report entry.
+Scope/rights: payment list is Finance-authorized and scoped; dashboard is
+Super-Admin/system-wide.
+Filters/output/tests: no reconciled date/project/location/charge totals or
+report export/test found.
+
+18. Outstanding dues report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier outstanding dues report.
+Backend/API: GET /api/v1/finance/receivables in OperationsController and
+member allocation-dues/dues endpoints in FinancePaymentController.
+Data: webv9_receivables, bookings, members, plots, blocks, charges, and
+payment allocations.
+Scope/rights: booking scope is checked/filtered in source.
+Filters/output: due rows and amounts; no consolidated date/project/status
+filters, reconciled totals, or report export found.
+Tests: no report-specific live-data test.
+
+19. Advance payment balances
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier advance payments report.
+Backend/API/screen: no authoritative advance-balance report or Reports entry
+found.
+Data/rule gap: no confirmed advance classification and accounting rule for
+distinguishing unapplied credit from refundable/posted advance.
+Scope, filters, totals, output, tests: not implemented or verifiable.
+
+20. Cash/bank summary
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier cash/bank summary.
+Backend/API: GET /api/v1/finance/summary; FinancePaymentController.summary.
+Data: payments_receipts amount/status/payment_date, filtered by payment scope
+for scoped staff; summary has posted collection, pending count, receipt count,
+and today's collection.
+Screen: Finance overview.
+Scope/rights: Finance VIEW; per-payment project access is applied for scoped
+accounts. This is not a cash/bank account reconciliation.
+Filters/output: no date/project/location/account filters or export report.
+Tests: no live aggregate/reconciliation test.
+
+21. Cashbook
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier cashbook report.
+Backend/API/screen: no complete cashbook report found.
+Data/rule gap: no verified opening/closing balance, posting journal, cash
+movement and adjustment reconciliation specification was found.
+Scope, filters, output, tests: no report implementation.
+
+22. Bank reconciliation
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier payment allocation and reconciliation reports.
+Backend/API: GET /api/v1/finance/payments/bank-reference-conflicts.
+Data: receipt bank references and payment records.
+Screen: Finance payment review.
+Scope/rights: Finance permission and payment scope.
+Filters/output: conflict detection only; no bank-statement import/matching,
+statement date filters, opening/closing balance, reconciliation sign-off, or
+export report found.
+Tests: no full reconciliation test.
+
+23. Customer statements
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier individual customer statements.
+Backend/API/service: POST /api/v1/finance/ledger/report and
+CustomerLedgerReportService.
+Screen/data: Finance > Customer Ledger; customer ledger/receivables,
+payments, allocations, booking and charge details.
+Scope/rights: non-Super-Admin request requires a booking in project/location
+scope; Finance VIEW applies.
+Filters/output: individual customer/booking statement criteria; browser
+print/Save PDF. No report CSV/Excel or consolidated statement export found.
+Tests: existing ledger tests are not live-schema checks; the prior full-suite
+run recorded five failures, including customer-ledger expectations. Live
+statement values/UI not verified.
+
+24. Customer ledger register
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier ledger register.
+Backend/API: GET /api/v1/finance/ledger/{memberId}; FinancePaymentController.
+Data: webv9_customer_ledger, receipts, charge types, bookings and members.
+Scope/rights: rows with booking IDs are filtered to accessible booking scope;
+customer ownership applies to customer-facing API.
+Filters/output: individual member path, ordered transactions and running
+balance; no all-customer register or export found.
+Tests: prior ledger test failures remain documented; live data not verified.
+
+25. Outstanding customer balances
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier outstanding-balance report.
+Backend/API: receivables, member dues, allocation-dues, and customer
+statement endpoints.
+Data: webv9_receivables, payment allocations, bookings, members, and charges.
+Scope/rights: scoped booking access in source.
+Filters/output: individual customer/booking balance; no consolidated
+authorized balance summary/reconciliation or export report.
+Tests: no live reconciliation test.
+
+26. Instalment schedules and instalment aging
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier instalment schedules and overdue instalment aging.
+Backend/API: GET /api/v1/admin/config/plans/schedules and booking detail
+schedule; AdminConfigurationController and SalesController.
+Data: webv9_instalment_plans and webv9_instalment_schedules; due date,
+instalment number, amount, and status are exposed in source.
+Screen: Admin > Instalment Plan Setup and booking detail.
+Scope/rights: administration and booking access gates vary; no dedicated
+scoped instalment-aging report was found.
+Filters/output: schedule list is bounded; no aging buckets/export report.
+Tests: no schedule-aging test; live schedules not verified.
+
+27. Customer payment history
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier customer payment history.
+Backend/API: Finance payment detail/list, allocation detail, ledger, and
+customer ledger APIs.
+Data: payments_receipts, webv9_payment_allocations, ledger, bookings and
+charge types.
+Scope/rights: Finance list/detail uses payment allocation scope; customer
+endpoints use authenticated customer ownership.
+Filters/output: individual customer history and existing payment list filters;
+no consolidated history export/report confirmed.
+Tests: no live-history reconciliation.
+
+28. Customer directory
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Customer Care directory.
+Backend/API: GET /api/v1/customer-care/customers and customer profile.
+Screen/data: Customer Care lookup; members, registrations, bookings and
+documents.
+Scope/rights: Customer Care VIEW and member project/location scope are applied
+in source.
+Filters/output: q search and bounded list; no report-specific date/status
+filters or export found.
+Tests: no directory-report test; actual customers not queried.
+
+29. Customer enquiries report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Customer Care enquiries.
+Backend/API: GET /api/v1/customer-care/enquiries.
+Screen/data: Customer Care workspace and webv9_customer_care_cases.
+Scope/rights: Customer Care VIEW and scoped customer rows.
+Filters/output: operational case list; no unified date/SLA aggregation or
+report export found.
+Tests: no report-specific enquiry test.
+
+30. Complaints report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Customer Care complaints and complaint history.
+Backend/API/service: GET /api/v1/customer-care/complaints and complaint
+history/detail; complaints service.
+Data: customer-care cases and history, member references.
+Scope/rights: Customer Care VIEW and member scope.
+Filters/output: q, page, pageSize and operational details; no date/SLA report
+or export found.
+Tests: no report-specific complaint test; no live cases verified.
+
+31. Pending cases report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Customer Care pending cases.
+Backend/API: GET /api/v1/customer-care/summary and case-list APIs.
+Data: webv9_customer_care_cases status/type counts.
+Scope/rights: summary computes over rows returned by the member-scope helper.
+Filters/output: headline open cases/tickets, pending follow-ups, enquiry
+count; no date, assignee, SLA aging, drill-down summary report, or export.
+Tests: no report-specific test.
+
+32. Follow-up report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Customer Care follow-ups.
+Backend/API: GET /api/v1/customer-care/followups.
+Data: customer-care follow-up cases, member, due date, assignment and notes.
+Scope/rights: Customer Care VIEW and member scope.
+Filters/output: operational list only; no overdue/SLA/date summary or export
+report found.
+Tests: no report-specific follow-up test.
+
+33. Customer tickets and feedback
+Status: PARTIALLY IMPLEMENTED
+Requirement: additional Customer Care screens found in source.
+Backend/API: GET /api/v1/customer-care/tickets and /feedback.
+Data: customer-care cases and feedback records.
+Scope/rights: Customer Care VIEW and scoped member access.
+Filters/output: operational lists; no report-level trend, date filter, totals,
+or export found.
+Tests: no report-specific test; live UI/data not verified.
+
+34. Unbooked plot aging
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier unbooked-plot aging report.
+Backend/API/screen: no aging endpoint or report choice.
+Data/rule gap: Plot model/inventory exposes no confirmed availability-start
+date or approved age anchor. Current status is derived from multiple workflow
+records and is not an authoritative start date.
+Filters/buckets/totals/output/tests: no supported aging report.
+
+35. Plot aging
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier plot aging report.
+Backend/API/screen: no plot-age report endpoint or screen.
+Data/rule gap: no authoritative plot-age date basis or approved age
+definition identified.
+Filters/buckets/totals/output/tests: not implemented.
+
+36. Booking-to-possession aging
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier booking-to-possession aging report.
+Backend/API/screen: no report endpoint or report screen.
+Data/rule gap: no verified possession milestone/date/status source or
+business definition found.
+Filters/buckets/totals/output/tests: not implementable from verified
+evidence.
+
+37. Overdue receivables aging
+Status: IMPLEMENTED — NOT FULLY VERIFIED
+Requirement: earlier receivables aging and overdue instalment reports.
+Backend/API: GET /api/v1/reports/finance/receivables-aging.
+Data: webv9_receivables joined to bookings, registrations, members, plots,
+blocks, and projects.
+Scope/rights: Reports/VIEW + Finance/VIEW; active project scope applied.
+Filters/output: as-of date, due-date range, bucket, project, location,
+customer; buckets 1-30, 31-60, 61-90, 90+; positive outstanding is
+max(original + surcharge - adjustment - paid, 0), age is days from
+receivable due_date to as-of date. Browser report outputs; 1,000 cap.
+Tests: mocked SQL parameter-order and empty-scope tests passed. This is a
+receivable due-date aging report, not proof of installment-schedule aging or
+live accounting reconciliation.
+
+38. Cancellation trend analysis
+Status: NOT IMPLEMENTED
+Requirement: earlier cancellation trend analysis.
+Backend/API/screen: cancellation register exists (item 11); no trend
+aggregation/chart/report endpoint found.
+Data: cancellation statuses/dates exist in the source query, but the trend
+report itself is absent. Trend date/state rules require business confirmation.
+Filters/output/tests: no trend report, totals, or trend test.
+
+39. Surcharge waiver report
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: explicit surcharge-waiver report requirement from earlier task.
+Backend/API/screen: no waiver lifecycle endpoint or Reports entry found.
+Data/rule gap: no confirmed waiver request/approval/posting entity or checked-in
+migration definition. Surcharge rules and generic finance adjustments are not
+evidence of a posted waiver.
+Required fields (original/requested/approved/posted/remaining amounts,
+percentage, reason, customer/booking/plot, approver, dates, status), totals,
+filters, exports, and tests are therefore not safely supportable.
+
+40. Development-charge report
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier development-charge report.
+Backend/data: development-charge account/schedule calculations and generic
+charge/receivable/ledger sources exist in the dashboard and Finance paths.
+Screen: configuration and transaction screens; no dedicated development-
+charge report choice/API found.
+Scope/rights: underlying Finance/booking permissions apply to their endpoints;
+no report-specific controls exist.
+Filters/output/tests: no dedicated charge totals, aging, reconciliation, or
+export report verified.
+
+41. Possession-charge report
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier possession-charge report.
+Backend/API/screen: no dedicated possession-charge report or confirmed
+possession-charge lifecycle/source identified.
+Data/rule gap: generic charge setup is not confirmation of posted
+possession-charge assessments or possession event dates.
+Filters/totals/output/tests: not supported by verified source.
+
+42. NDC (No Demand Certificate) report
+Status: BLOCKED — SOURCE DATA OR BUSINESS RULE MISSING
+Requirement: earlier NDC report.
+Backend/API/screen/data: no NDC report, certificate lifecycle, or authoritative
+NDC eligibility/source data identified.
+Filters/totals/output/tests: no report implementation found.
+
+43. Payment allocation register and allocation reconciliation
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier payment allocation and reconciliation reports.
+Backend/API: GET /api/v1/finance/payments/{id}/allocations and member
+allocation-dues; FinancePaymentController.
+Data: webv9_payment_allocations, receivables, schedules, registrations,
+bookings, plots, and charge types.
+Scope/rights: payment detail first requires payment access; booking scope
+checks apply to customer/booking operations.
+Filters/output: per-payment allocation detail; no cross-payment allocation
+register, unapplied/reversed allocation reconciliation, totals, or export
+report found.
+Tests: no live allocation reconciliation test.
+
+44. Administration configuration registers
+Status: PARTIALLY IMPLEMENTED
+Requirement: Administration & Settings report/register requests.
+Backend/API: GET /api/v1/admin/config/{charges,banks,cash-sites,plans,
+surcharges,settings} and /plans/schedules.
+Data/screen: Admin configuration tables and generated schedules.
+Scope/rights: system-wide Admin & Settings endpoints are restricted by
+PermissionAuthorizationFilter; no project-scoped report model.
+Filters/output: setup/list screens, not report filters or export formats.
+Tests: no report-specific test. Surcharge rules are not surcharge waivers.
+
+45. Finance operational summary
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Finance summary/report entry.
+Backend/API: GET /api/v1/finance/summary; FinancePaymentController.summary.
+Screen/data: Finance overview, receipt counts and posted/pending collection
+amounts.
+Scope/rights: scoped users' rows are filtered by project-accessible payments.
+Filters/output: no date/project/location/account filters or report export.
+Tests: no live aggregate test.
+
+46. Legacy operational summary opened from Finance Reports
+Status: PARTIALLY IMPLEMENTED
+Requirement: earlier Finance Reports screen and administration summary.
+Backend/API: frontend FinanceReportsWorkspace calls /reports/summary, which
+maps to OperationsController.reportSummary at GET /api/v1/reports/summary.
+Data: system-wide counts of members, registrations, plots, bookings, recovery
+rows, and payment receipts.
+Scope/rights: controller explicitly returns 403 to non-Super-Admin users;
+PermissionAuthorizationFilter additionally requires Reports/VIEW. Counts are
+system-wide, not project/location-scoped.
+Filters/output: no date/project/location filters; browser print only.
+Tests: no dedicated screen/API integration test. The Finance tab is visible
+to Finance users. A Finance user with Reports/VIEW reaches the controller but
+a non-Super-Admin receives its system-wide-access denial; without Reports/VIEW
+the authorization filter denies the call earlier. This is a confirmed
+screen/API authorization mismatch in source.
+
+47. Customer-facing property ledger
+Status: PARTIALLY IMPLEMENTED
+Requirement: additional customer-ledger functionality found during review.
+Backend/API: customer identity endpoints under /api/v1/customer, including
+property ledger; CustomerLedgerController.
+Data: customer-owned booking/registration ledger and related payment data.
+Scope/rights: customer identity and booking ownership controls apply.
+Filters/output: individual account/property screen; no multi-customer report
+or CSV/Excel/PDF report confirmed.
+Tests: no live customer account/UI verification.
+
+Test and verification record
+----------------------------
+Rerun during this audit:
+- Backend focused tests: ModelCAuthorizationTest and ReportsControllerTest;
+  17 run, 0 failures, 0 errors.
+- Frontend direct TypeScript check on src\main.tsx: exit code 0.
+
+These are source/mock-based checks. ReportsControllerTest contains six tests
+for aging SQL parameter order, empty scope, inventory scope, receipt
+allocation scope, and cancellation status summary; it does not execute merge
+or cancellation SQL against a real schema. ModelCAuthorizationTest covers
+generic permission/scope behavior, not every report.
+
+The prior full backend-suite result remains 187 run, 182 passed, 5 failed.
+Those five prior failures were two password-policy expectations, two
+customer-ledger schema/property expectations, and one historical-payment
+test. The full suite was not rerun as part of this verification audit.
+
+Evidence and limitations
+------------------------
+- ReportsController.java: report routes, filters, query sources, summary
+  shaping, and row limits.
+- PermissionAuthorizationFilter.java: Reports/VIEW and source-module VIEW
+  gates; action mapping.
+- UserPermissionService.java and ProjectAccessService.java: active account,
+  dates, designation/department, override, and project/location/city scope
+  source rules.
+- SalesController.java and SalesWorkflowRepository.java: booking, transfer,
+  cancellation, merge, events, and settlement operations.
+- FinancePaymentController.java and OperationsController.java: receipt,
+  allocation, verification/posting, ledger, dues, reversal, and summary
+  endpoints.
+- CustomerCareController.java: directory, cases, complaints, enquiries,
+  tickets, follow-ups, feedback, and member-scope filtering.
+- frontend\src\main.tsx: Reports definitions/workspace, Finance summary
+  screen, and existing module views.
+- database\migrations contains only the three migration files listed above;
+  no checked-in migration was found defining the merge/cancellation/refund,
+  receivable, authorization, waiver, possession, or NDC reporting structures
+  reviewed here. This does not prove those objects are absent from a deployed
+  database.
+- WEBV9_USER_ROLE_DESIGNATION_COMPLETE_REPORT.txt is historical, not current
+  source-of-truth for permission resolution. Its statement that API
+  permissions fall back to role_permissions conflicts with current
+  UserPermissionService, which resolves active position permissions and
+  individual overrides (including explicit denial) and does not inherit
+  role_permissions in isGranted/effectivePermissionCodes. No live assignments
+  were available to compare against either report.
+
+No live database/schema query, runtime UI session, migration, application
+source/configuration change, permission change, or database record change was
+performed during this verification audit.

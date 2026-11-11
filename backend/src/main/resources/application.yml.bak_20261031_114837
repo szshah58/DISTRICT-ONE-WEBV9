@@ -1,0 +1,27 @@
+﻿server:
+  port: 8081
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 40MB
+spring:
+  datasource:
+    url: ${WEBV9_DB_URL:jdbc:mysql://127.0.0.1:3306/district_one?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${WEBV9_DB_USERNAME:district_one}
+    password: ${WEBV9_DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+app:
+  jwt-secret: ${WEBV9_JWT_SECRET:change-this-development-secret-to-a-long-random-value}
+  cors-origins: "${WEBV9_CORS_ORIGINS:http://localhost:8080,http://162.12.211.227:8080,http://180.149.219.241:8080}"
+  database-verification-token: ${WEBV9_DATABASE_VERIFICATION_TOKEN:}
+  initial-admin-setup-token: ${WEBV9_INITIAL_ADMIN_SETUP_TOKEN:}
+
+
+
+

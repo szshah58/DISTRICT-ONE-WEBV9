@@ -1,0 +1,374 @@
+DISTRICT ONE WEBV9
+DESIGNATION AUTHORIZATION AND REPORTS IMPLEMENTATION REPORT
+Updated: 2026-11-02
+Project: D:\WEB_V9
+
+1. COMPLETION SUMMARY
+
+Designation-based permission resolution and backend enforcement remain based
+on the existing implementation. The Reports work adds five real-data report
+endpoints, a permission-filtered Reports navigation/workspace, scoped CSV and
+Excel-compatible exports, and print/PDF output. New reports are not connected
+to live database records because no live read-only database access was
+available.
+
+No user permissions/assignments or database records were changed. No migration
+was created or applied. The actual user/designation/role/project/location
+assignment matrix is NOT VERIFIED and is not fabricated here.
+
+2. BACKUPS AND DATA SAFETY
+
+Original authorization backup:
+D:\WEB_V9_BACKUPS\WEBV9_AUTH_20261102_110143
+
+Earlier Reports backup:
+D:\WEB_V9_BACKUPS\WEBV9_REPORTS_20261102_120105
+
+Continuation backup before this continuation's edits:
+D:\WEB_V9_BACKUPS\WEBV9_REPORTS_CONTINUE_20261102_120617
+
+The continuation backup contains verified SHA-256 copies of the report
+controller, project-access service, authorization filter, frontend entrypoint,
+and both reports. It also contains Payment.java, copied and hash-verified
+before adding an explicit ID getter to address the backend compilation error.
+The earlier Reports backup was reported as verified for its 14 affected files.
+The protected D:\D1_Mobiles_V5.2_MASTER_BACKUP_2026-10-08 was not touched.
+
+No database backup was required or attempted because there was no database
+write. Customer and financial records were not modified.
+
+3. AUTHORIZATION ARCHITECTURE VERIFIED IN SOURCE
+
+- UserPermissionService checks active account, access start/end timestamps,
+  active designation, and department compatibility. Designation permissions
+  come from webv9_position_permissions; individual user overrides take
+  precedence, including an explicit deny. Role permissions are not inherited
+  by the effective permission resolver. A granted Reports/VIEW action is
+  included in the effective module list for scoped users.
+- Super Admin is determined from the active user super-admin flag or
+  SUPER_ADMIN role and receives the existing system-wide permission bypass.
+- ProjectAccessService checks active project/location/city assignment,
+  account dates/status, designation activity, and department compatibility.
+  accessibleProjectIds supplies the active project set used by the new
+  reports.
+- PermissionAuthorizationFilter checks the required module/action before
+  controller execution. New reports require Reports/VIEW and, for the
+  underlying data, Finance/VIEW or Plots & Sales/VIEW. Report queries separately
+  restrict the records to permitted project scope.
+- Auth/current-user data exposes effective modules and permission actions to
+  the frontend. The frontend hides unauthorized navigation and report choices;
+  backend checks remain authoritative.
+- Finance receipt actions are distinct: RECEIPT_CREATE, RECEIPT_VERIFY,
+  RECEIPT_POST, and RECEIPT_REVERSE. Verification, posting, and reversal are
+  not inferred from a Finance role name.
+
+4. DESIGNATION / MODULE / ACTION RIGHTS MATRIX
+
+Legend:
+V=view; C=create/add; E=edit; Vf=verify; P=post; R=reverse/cancel;
+A=approve; X=export; Adm=administer.
+"Explicit grant" means the active designation permission or a true individual
+override must grant the action; a false override denies it. The table defines
+source-code behavior/target policy, NOT actual database assignments.
+Status labels below use the requested classifications: IMPLEMENTED AND TESTED;
+IMPLEMENTED, NOT FULLY TESTED; NOT IMPLEMENTED; and DATABASE ASSIGNMENT NOT
+VERIFIED. Where a role row has both a partial implementation and an
+unimplemented requirement, both are stated explicitly.
+
+Designation / function | Modules and supported actions | Project/location
+scope | Overrides and dates | Implementation status
+
+SUPER ADMIN
+  All modules; V/C/E/Vf/P/R/A/X/Adm system-wide under the existing bypass.
+  Active projects system-wide. Existing account active/date checks remain.
+  Per-user overrides do not narrow the Super Admin bypass.
+  IMPLEMENTED AND TESTED in source-level authorization tests.
+  DATABASE ASSIGNMENT NOT VERIFIED.
+
+ADMIN
+  No automatic business or finance rights. User administration is limited to
+  explicit Users & Roles ADD/EDIT and the applicable user/project management
+  checks. Admin & Settings/config and several system-wide APIs still require
+  Super Admin, so the intended scoped admin capability is not complete.
+  No automatic Vf/P/R. Scope/date/overrides use the common resolver.
+  NOT IMPLEMENTED for the full requested "administration only within assigned
+  scope" behavior; scoped user-management pieces are implemented but not fully
+  tested. DATABASE ASSIGNMENT NOT VERIFIED.
+
+DEPARTMENT MANAGER
+  No title-specific automatic action set. V/C/E/Vf/P/R/A/X/Adm are available
+  only when individually granted through the designation plus any explicit
+  user override. Position department must be compatible with user department;
+  project/location scope is required.
+  IMPLEMENTED, NOT FULLY TESTED as a generic resolver; no actual role/title
+  grant matrix was verified. DATABASE ASSIGNMENT NOT VERIFIED.
+
+FINANCE MANAGER
+  Finance and Reports access only through explicit module/action grants.
+  Finance V/C/E do not imply Vf/P/R; each is distinct. Export of new Finance
+  reports additionally requires Reports/VIEW and Finance/VIEW.
+  Project/location scope and access dates are required.
+  IMPLEMENTED, NOT FULLY TESTED as configurable explicit permissions; no
+  Finance Manager-specific permission assignment is in source defaults.
+  DATABASE ASSIGNMENT NOT VERIFIED.
+
+FINANCE VERIFIER
+  Finance/V and RECEIPT_VERIFY only when separately granted. Cannot verify own
+  entry. Does not automatically receive C/P/R/A/Adm.
+  Project/location scope and dates enforced.
+  IMPLEMENTED AND TESTED for distinct verify permission and self-verification
+  controls. DATABASE ASSIGNMENT NOT VERIFIED.
+
+FINANCE POSTER
+  Finance/V and RECEIPT_POST only when separately granted. Can post only a
+  verified receipt; entry, verification, and posting must be separated across
+  users. Does not automatically receive C/Vf/R/A/Adm.
+  Project/location scope and dates enforced.
+  IMPLEMENTED AND TESTED for posting/verification permission separation and
+  finance workflow rules. DATABASE ASSIGNMENT NOT VERIFIED.
+
+RECOVERY
+  Finance/V and RECEIPT_CREATE only when granted. No automatic Vf/P/R/A/Adm.
+  Receipt entries must be attached to a booking in the authorized project/
+  location scope.
+  IMPLEMENTED, NOT FULLY TESTED for a named Recovery designation; generic
+  action enforcement is covered by existing permission/filter tests.
+  DATABASE ASSIGNMENT NOT VERIFIED.
+
+DATA ENTRY
+  Only individually granted module/action access. Receipt creation maps to
+  RECEIPT_CREATE, not a broad finance role; no automatic Vf/P/R/A/Adm.
+  Project/location scope and dates are required.
+  IMPLEMENTED, NOT FULLY TESTED for a named Data Entry designation. The
+  permission resolver and Finance action mapping are generic and do not install
+  a default Data Entry grant.
+  DATABASE ASSIGNMENT NOT VERIFIED.
+
+CUSTOMER CARE
+  Customer Care V/C/E/A only when granted. Finance write actions do not follow
+  from Customer Care access. Report exports are not customer-care report
+  exports in this implementation.
+  Common active/date and permission resolution applies. Every legacy
+  customer-care endpoint has not been verified to apply identical
+  project/location record scoping.
+  IMPLEMENTED, NOT FULLY TESTED. DATABASE ASSIGNMENT NOT VERIFIED.
+
+REPORT VIEWER
+  V-only access is possible by granting module VIEW. New report screens require
+  Reports/VIEW plus source-module VIEW. Export operates only on the already
+  authorized report rows; there is no separate EXPORT right check in the new
+  workspace.
+  Project/location scope and dates are enforced by the report APIs.
+  IMPLEMENTED, NOT FULLY TESTED as generic VIEW-only behavior. No actual
+  REPORT_VIEWER job-title record was verified. DATABASE ASSIGNMENT NOT VERIFIED.
+
+ADDITIONAL JOB TITLES
+  The existing position administration API can list/create job titles and set
+  permissions using the configured permission catalog. Custom titles use the
+  same effective resolver. No actual additional designation names or grants
+  are claimed without database evidence.
+  IMPLEMENTED, NOT FULLY TESTED. DATABASE ASSIGNMENT NOT VERIFIED.
+
+5. PERMISSION / ROLE / DESIGNATION DISCREPANCIES
+
+VERIFIED IN SOURCE CODE
+
+1. Role permissions and effective authorization can disagree. The
+   administration options API exposes role_permissions for display, while
+   UserPermissionService resolves effective access from designation grants
+   and user overrides. A displayed role permission is not by itself an
+   effective grant.
+2. The generic Admin function is narrower than the requested scoped Admin
+   model: system-wide Admin & Settings endpoints remain Super-Admin-only.
+   The scoped user-management helpers do not make all administration
+   endpoints scoped.
+3. The frontend is a usability layer. Not every legacy action/control has
+   been audited for visibility against the full action matrix. Backend
+   authorization prevents unauthorized API execution, but a user may still
+   see an unusable legacy control.
+4. The Reports UI displays only report types for which the current session
+   has the source module in addition to Reports. Backend separately checks
+   Reports/VIEW and the source module's VIEW right.
+5. Reports exceeding 1,000 results are truncated. Summary values are from
+   returned rows and explicitly identified as partial. No server-side
+   pagination or full-result export is implemented.
+6. Spreadsheet output is Excel-compatible HTML (.xls), not XLSX. PDF is
+   browser Print / Save as PDF. Neither is a server-side export pipeline.
+7. The legacy /api/v1/reports/summary and Dashboard are system-wide,
+   Super-Admin-only surfaces, not scoped reports.
+
+NOT VERIFIED
+
+- Any actual username, account status, job designation, department, role,
+  user-level override, project/location scope, access start/end date, or
+  effective permission.
+- Whether deployed tables/columns and workflow statuses match the source SQL.
+- Whether Admin or other existing assignments depend on legacy role grants.
+- Whether every legacy customer-care, ledger, sales, and finance query enforces
+  exactly the desired per-record location scope.
+- Whether the business intends distinct permissions for approve, cancel, and
+  reverse across modules beyond the existing generic action mapping.
+- Whether current user/designation assignments should be migrated or corrected.
+
+6. REPORTS IMPLEMENTED IN THIS CONTINUATION
+
+Backend endpoints:
+- GET /api/v1/reports/plots/inventory
+- GET /api/v1/reports/sales/merges
+- GET /api/v1/reports/sales/cancellations
+- GET /api/v1/reports/finance/receivables-aging
+- GET /api/v1/reports/finance/receipts
+
+Filters/data, formats, access gates, and report gaps are itemized in
+WEBV9_MODULE_REPORTS_INVENTORY.txt. No fake report rows or surcharge-waiver
+records were introduced. The required surcharge-waiver report remains
+NOT IMPLEMENTED because no authoritative waiver request/approval/posting data
+model was identified.
+
+7. FILES CHANGED
+
+- backend\src\main\java\com\districtone\webv9\controller\ReportsController.java
+  Added scoped plot inventory, merge/history, cancellation/refund,
+  receivable-aging, and receipt-register reports; corrected as-of bind order,
+  duplicate booking alias, and mutable aging summary.
+- backend\src\main\java\com\districtone\webv9\security\ProjectAccessService.java
+  Added active scoped accessibleProjectIds for report queries.
+- backend\src\main\java\com\districtone\webv9\security\PermissionAuthorizationFilter.java
+  Allows Reports VIEW subject to permissions; new reports also require the
+  underlying Finance or Plots & Sales VIEW permission.
+- backend\src\main\java\com\districtone\webv9\security\UserPermissionService.java
+  Includes Reports in effective module navigation when a scoped user has the
+  Reports/VIEW designation or override grant.
+- backend\src\main\java\com\districtone\webv9\model\Payment.java
+  Added explicit getId() accessor after clean source compilation reported that
+  PaymentController's existing scope check could not resolve the Lombok
+  generated method.
+- backend\src\test\java\com\districtone\webv9\ReportsControllerTest.java
+  Added tests for aging SQL parameter order, empty/out-of-scope access,
+  per-project inventory queries, and mixed-project receipt filtering.
+- backend\src\test\java\com\districtone\webv9\ModelCAuthorizationTest.java
+  Added report/source-module authorization and Reports navigation coverage.
+- frontend\src\main.tsx
+  Added Reports navigation/workspace, source-module filtering, search, filters,
+  CSV, Excel-compatible export, and print/PDF actions.
+- frontend\src\styles.css
+  Added report print styles and summary layout.
+- WEBV9_MODULE_REPORTS_INVENTORY.txt
+  Replaced the prior inventory with current catalogue, report details, access,
+  output formats, gaps, test status, and business/evidence checklists.
+- WEBV9_DESIGNATION_AUTHORIZATION_IMPLEMENTATION_REPORT.txt
+  This completed matrix/status and implementation report.
+- WEBV9_USER_PERMISSION_READ_ONLY_QUERIES.sql
+  Safe SELECT-only queries for administrator/DBA review because live database
+  assignment verification was unavailable.
+
+No migration files were created or applied.
+
+8. TEST RESULTS
+
+- Focused backend report/authorization tests:
+  ReportsControllerTest and ModelCAuthorizationTest: 17 run, 17 passed.
+- Full backend suite: 187 run, 182 passed, 5 failed, 0 errors.
+  The five failures are the same known failures documented before this
+  continuation: two password-policy expectations, two customer-ledger schema/
+  selected-property expectations, and one historical-payment expectation.
+  These failures were not removed, weakened, or masked.
+- Frontend TypeScript check using the direct entrypoint command: passed.
+- Vite production build: passed. Vite emitted its large-chunk advisory.
+- A Maven clean attempt could not delete backend\target\webv9-0.1.0.jar
+  because another process held it open. It did not stop that process; the
+  subsequent backend test run passed all 17 focused tests.
+- No live database integration test was possible.
+
+9. PRIORITIZED CORRECTION / DEPLOYMENT PLAN
+
+1. DBA: use the SELECT-only queries in
+   WEBV9_USER_PERMISSION_READ_ONLY_QUERIES.sql to confirm assignments, dates,
+   scopes, permission rows, and deployed schema. Do not apply any writes from
+   this report.
+2. Validate the new report SQL against a read-only deployment-equivalent
+   schema, especially merge, cancellation/refund, payment allocation, and
+   receivable column names/statuses.
+3. Before deployment, grant Reports/VIEW and required source-module VIEW only
+   to approved designations/users; verify project/location assignments and
+   dates. No automatic broad grants are recommended.
+4. Agree a real surcharge-waiver lifecycle/accounting model before implementing
+   its required report. Prepare a reviewed reversible migration and backup
+   only after schema approval; no waiver implementation is claimed here.
+5. Resolve the five existing backend test failures separately; keep their
+   assertions intact.
+6. Complete scoped Admin & Settings policy and audit legacy customer-care,
+   finance, and sales controls/APIs for the intended action matrix.
+7. Add report pagination/full totals and integration tests before relying on
+   exports above 1,000 rows.
+
+10. SOURCE EVIDENCE
+
+- backend\src\main\java\com\districtone\webv9\security\UserPermissionService.java
+  account/date checks (line 18), scope checks (68), effective permission
+  resolution/overrides (90), codes/actions (121, 144).
+- backend\src\main\java\com\districtone\webv9\security\ProjectAccessService.java
+  active scoped project query (line 37).
+- backend\src\main\java\com\districtone\webv9\security\PermissionAuthorizationFilter.java
+  module/action enforcement and report source-module check (lines 112-127).
+- backend\src\main\java\com\districtone\webv9\service\FinanceVerificationService.java
+  verify/reject status transitions and audit.
+- backend\src\main\java\com\districtone\webv9\service\AllocationBasedPaymentPostingService.java
+  explicit post right, verified state, and separation of users.
+- backend\src\main\java\com\districtone\webv9\service\PaymentReversalService.java
+  explicit reverse right, required reason, different actor, reversal record,
+  and audit (lines 27-36, 52-53, 96-113).
+- backend\src\main\java\com\districtone\webv9\controller\OperationsController.java
+  user/designation data, role permission display, role/user assignments and
+  scoped receivables (lines 86, 142, 184 onward).
+- frontend\src\main.tsx
+  navigation/capability use and Reports workspace (lines 115-167,
+  3874-4030).
+- backend\src\main\java\com\districtone\webv9\controller\ReportsController.java
+  new report API routes (lines 47, 66, 145, 215, 291).
+
+11. TARGETED SUPER ADMIN AUTHORIZATION CORRECTION (2026-11-02)
+
+The verified Super Admin identity remains database-backed: an active account
+whose database role is SUPER_ADMIN or whose is_super_admin flag is set, within
+its active access dates. Frontend display name, role badge, and cached
+sessionStorage data are not used by backend authorization.
+
+UserPermissionService now always includes the existing WEBV9 module names in
+the effective module list for Super Admin and unions those with modules
+registered in the permissions catalog. Super Admin module access and action
+checks do not require designation grants, ordinary module grants, or assigned
+project/location scopes. ProjectAccessService continues to enumerate active
+projects for Super Admin; inactive projects remain unavailable.
+
+The frontend now waits for authenticated GET /api/v1/auth/me before restoring
+the application session. It no longer renders modules from an editable cached
+user object before server authentication completes. The backend remains the
+authorization boundary. Normal users still require active designation rights,
+overrides, and project/location scope. Existing authentication, date checks,
+finance action separation, and audit writes were retained.
+
+Files changed for this correction:
+- backend\src\main\java\com\districtone\webv9\security\UserPermissionService.java
+- frontend\src\main.tsx
+- backend\src\test\java\com\districtone\webv9\ModelCAuthorizationTest.java
+- backend\src\test\java\com\districtone\webv9\PaymentAllocationFoundationTest.java
+- WEBV9_DESIGNATION_AUTHORIZATION_IMPLEMENTATION_REPORT.txt
+
+Backup folder: D:\WEB_V9_BACKUPS\WEBV9_SUPERADMIN_20261102_130007
+The five pre-edit copies were hash-verified. No migration or database record,
+role, permission, configuration, or financial data was changed.
+
+Verification:
+- ModelCAuthorizationTest, PaymentAllocationFoundationTest, and
+  ReportsControllerTest: 60 tests, 0 failures, 0 errors.
+- Frontend direct TypeScript check on src\main.tsx: passed.
+- Direct Vite production build: passed; existing >500 kB chunk-size advisory.
+- npm run build was also attempted and fails before Vite because
+  frontend\tsconfig.json is absent (TS6053). The standalone TypeScript check
+  and direct Vite build both pass.
+- No live database query or runtime UI session was performed. The tests verify
+  source behavior with mocked database access and existing in-memory finance
+  fixtures; deployed-account identity and live UI behavior remain unverified.
+
+END OF REPORT
